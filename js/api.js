@@ -40,6 +40,7 @@ const Api = (() => {
     users: {
       list: () => request('GET', '/users'),
       get: (id) => request('GET', `/users/${id}`),
+      getByUsername: (username) => request('GET', `/users/byUsername/${encodeURIComponent(username)}`),
       create: (u) => request('POST', '/users', u),
       update: (id, u) => request('PATCH', `/users/${id}`, u),
       remove: (id) => request('DELETE', `/users/${id}`),

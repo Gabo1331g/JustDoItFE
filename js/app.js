@@ -58,11 +58,16 @@
   $('login-form').onsubmit = (e) => {
     e.preventDefault();
     guard(async () => {
-      const name = $('login-username').value.trim().toLowerCase();
-      const list = await Api.users.list();
-      const found = list.find((u) => (u.userName || '').toLowerCase() === name);
-      if (!found) throw new Error('Usuario no encontrado');
-      startSession(found);
+      const user_name = $('login-username').value.trim().toLowerCase();
+      if (!user_name) throw new Error('Ingresa un nombre de usuario');
+
+      // Llama al backend directamente sin traer la lista completa
+      try {
+        const found = await Api.users.getByUsername(user_name);
+        startSession(found);
+      } catch (err) {
+        throw new Error('Usuario no encontrado');
+      }
     });
   };
 
