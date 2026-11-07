@@ -2,6 +2,7 @@
   const $ = (id) => document.getElementById(id);
   const SESSION_KEY = 'justdoit.user';
   const STATUS_LABEL = { PENDING: 'Pendiente', INPROGRESS: 'En progreso', DONE: 'Hecha' };
+  const NEXT_STATUS = { PENDING: 'INPROGRESS', INPROGRESS: 'DONE' }; // DONE no tiene siguiente
 
   let currentUser = null;
   let users = [];
@@ -184,22 +185,22 @@
     const shown = tasks.filter((t) => !filter || t.status === filter);
     if (!shown.length) { list.append(el('div', { class: 'empty' }, 'No hay tareas')); return; }
     shown.forEach((t) => {
-      const select = el('select', { 'aria-label': 'Cambiar estado' },
-        Object.entries(STATUS_LABEL).map(([v, l]) => el('option', { value: v }, l)));
-      select.value = t.status;
-      select.onchange = () => guard(async () => {
-        await Api.tasks.update(targetUserId(), t.id, { status: select.value });
-        await loadTasks();
-      });
+      const next = NEXT_STATUS[t.status];
+
       list.append(el('article', { class: 'card task ' + t.status },
-        el('div', { class: 'row' }, el('span', { class: 'badge ' + t.status }, STATUS_LABEL[t.status] || t.status),
-          el('span', { class: 'meta' }, '#' + t.id)),
-        el('p', {}, t.description || ''),
-        el('div', { class: 'meta' }, 'Límite: ' + (t.deadline || '-') + ' · Creada: ' + fmtDate(t.createdAt)),
-        select,
-        el('div', { class: 'row' },
-          el('button', { class: 'btn ghost small', onclick: () => openTaskDialog(t) }, 'Editar'),
-          el('button', { class: 'btn danger small', onclick: () => deleteTask(t) }, 'Eliminar'))));
+          el('div', { class: 'row' }, el('span', { class: 'badge ' + t.status }, STATUS_LABEL[t.status] || t.status),
+              el('span', { class: 'meta' }, '#' + t.id)),
+          el('p', {}, t.description || ''),
+          el('div', { class: 'meta' }, 'Límite: ' + (t.deadline || '-') + ' · Creada: ' + fmtDate(t.createdAt)),
+          el('button', Object.assign({
+            class: 'btn primary block',
+            style: 'margin-top:0',
+            title: next ? `Pasar a ${STATUS_LABEL[next]}` : 'La tarea ya está hecha',
+            onclick: () => advanceTask(t),
+          }, next ? {} : { disabled: '', style: 'margin-top:0;opacity:.45;cursor:not-allowed' }), 'Avanzar'),
+          el('div', { class: 'row' },
+              el('button', { class: 'btn ghost small', onclick: () => openTaskDialog(t) }, 'Editar'),
+              el('button', { class: 'btn danger small', onclick: () => deleteTask(t) }, 'Eliminar'))));
     });
   }
 
@@ -207,7 +208,6 @@
     editingTaskId = task ? task.id : null;
     $('task-dialog-title').textContent = task ? 'Editar tarea' : 'Nueva tarea';
     $('tf-description').value = task?.description || '';
-    $('tf-status').value = task?.status || 'PENDING';
     $('tf-deadline').value = task?.deadline || '';
     $('task-dialog').showModal();
   }
@@ -224,13 +224,14 @@
   $('task-form').onsubmit = (e) => {
     e.preventDefault();
     guard(async () => {
-      const payload = { description: $('tf-description').value.trim(), status: $('tf-status').value };
+      const payload = { description: $('tf-description').value.trim() };
       const deadline = $('tf-deadline').value;
       if (deadline) payload.deadline = deadline;
       if (editingTaskId) {
         await Api.tasks.update(targetUserId(), editingTaskId, payload);
         toast('Tarea actualizada');
       } else {
+        payload.status = 'PENDING'; // toda tarea nueva inicia en Pendiente
         await Api.tasks.create(targetUserId(), payload);
         toast('Tarea creada');
       }
@@ -238,6 +239,17 @@
       await loadTasks();
     });
   };
+
+
+  async function advanceTask(t) {
+    const next = NEXT_STATUS[t.status];
+    if (!next) return; // Hecha: no aplica
+    await guard(async () => {
+      await Api.tasks.update(targetUserId(), t.id, { status: next });
+      toast(`Tarea #${t.id} pasó a "${STATUS_LABEL[next]}"`);
+      await loadTasks();
+    });
+  }
 
   async function deleteTask(t) {
     if (!confirm('¿Eliminar esta tarea?')) return;
